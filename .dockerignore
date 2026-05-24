@@ -1,0 +1,9 @@
+server/node_modules
+server/uploads
+server/public
+server/database/nexus.sqlite
+web/node_modules
+web/dist
+electron
+.git
+*.log

@@ -1,0 +1,77 @@
+/* ── NEXUS 사이버틱 디자인 시스템 ── */
+:root {
+  --bg-deep:       #0a0d14;
+  --bg-panel:      #111827;
+  --bg-input:      #1a2235;
+  --bg-hover:      #1e2d42;
+  --border:        #1e3a5f;
+  --border-active: #00d4ff;
+  --text-primary:  #e2eaf5;
+  --text-muted:    #5d7a9a;
+  --accent-cyan:   #00d4ff;
+  --accent-green:  #00ff9d;
+  --accent-red:    #ff3b5c;
+  --accent-amber:  #ffb347;
+  --glow-cyan:     0 0 10px rgba(0, 212, 255, 0.35);
+  --glow-green:    0 0 8px rgba(0, 255, 157, 0.5);
+  --font-main:     'Noto Sans KR', sans-serif;
+  --font-mono:     'JetBrains Mono', 'Consolas', monospace;
+  --sidebar-width: 240px;
+  --header-height: 52px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* 버튼 기본 초기화 */
+button { cursor: pointer; border: none; background: none; font-family: inherit; color: inherit; }
+
+/* 인풋 기본 초기화 */
+input, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus {
+  border-color: var(--border-active);
+  box-shadow: var(--glow-cyan);
+}
+
+/* 유틸리티 */
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--text-muted); }
+.cyan { color: var(--accent-cyan); }
+
+/* 온라인 표시 애니메이션 */
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; box-shadow: var(--glow-green); }
+  50%       { opacity: 0.7; box-shadow: none; }
+}
+
+/* 모바일 */
+@media (max-width: 767px) {
+  :root {
+    --sidebar-width: 100vw;
+    --header-height: 48px;
+  }
+}
