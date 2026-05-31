@@ -1,97 +1,90 @@
+import { Archive, Download, File, FileSpreadsheet, FileText, Image as ImageIcon } from 'lucide-react';
+import { apiUrl } from '../api/client';
+
 export default function FilePreview({ attachment }) {
-  const { file_name, mime_type, file_size, id } = attachment;
-  const isImage = mime_type && mime_type.startsWith('image/');
-  const url = `/api/files/${id}`;
+  const fileName = repairFileName(attachment.file_name || attachment.fileName || '\uD30C\uC77C');
+  const mimeType = attachment.mime_type || attachment.mimeType;
+  const fileSize = attachment.file_size || attachment.fileSize;
+  const id = attachment.id;
+  const isImage = mimeType && mimeType.startsWith('image/');
+  const previewUrl = fileUrl(id, false);
+  const downloadUrl = fileUrl(id, true);
 
-  function formatSize(bytes) {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  }
-
-  function getFileColor(mime) {
-    if (!mime) return 'var(--text-muted)';
-    if (mime.includes('pdf')) return '#ff6b6b';
-    if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return '#00d26a';
-    if (mime.includes('word') || mime.includes('document')) return '#4d9eff';
-    if (mime.includes('image')) return 'var(--accent-cyan)';
-    if (mime.includes('zip') || mime.includes('compressed')) return 'var(--accent-amber)';
-    return 'var(--text-muted)';
+  function handleDownload() {
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = fileName;
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   if (isImage) {
     return (
-      <a href={url} target="_blank" rel="noreferrer" style={styles.imgLink}>
-        <img
-          src={url}
-          alt={file_name}
-          style={styles.img}
-          onError={e => { e.target.style.display = 'none'; }}
-        />
-        <span style={{ ...styles.imgName, color: 'var(--text-muted)' }}>{file_name}</span>
-      </a>
+      <div className="image-preview">
+        <button type="button" className="image-preview-button" onClick={handleDownload} title={fileName}>
+          <img
+            src={previewUrl}
+            alt={fileName}
+            onError={e => { e.currentTarget.style.display = 'none'; }}
+          />
+        </button>
+        <div className="file-actions-row">
+          <span className="file-name" title={fileName}>{fileName}</span>
+          <button type="button" className="file-open-button" onClick={handleDownload} title="\uD30C\uC77C \uB2E4\uC6B4\uB85C\uB4DC">
+            <Download size={14} />
+            <span>\uB2E4\uC6B4\uB85C\uB4DC</span>
+          </button>
+        </div>
+      </div>
     );
   }
 
   return (
-    <a href={url} target="_blank" rel="noreferrer" style={styles.chip}>
-      <span style={{ ...styles.icon, color: getFileColor(mime_type) }}>
-        {getFileIcon(mime_type)}
+    <button type="button" className="file-chip" onClick={handleDownload} title={fileName}>
+      <FileIcon mime={mimeType} />
+      <span className="file-info">
+        <span className="file-name">{fileName}</span>
+        {fileSize && <span className="file-size">{formatSize(fileSize)}</span>}
       </span>
-      <span style={styles.info}>
-        <span style={styles.name}>{file_name}</span>
-        {file_size && <span style={styles.size}>{formatSize(file_size)}</span>}
+      <span className="file-open-button">
+        <Download size={14} />
+        <span>\uB2E4\uC6B4\uB85C\uB4DC</span>
       </span>
-    </a>
+    </button>
   );
 }
 
-function getFileIcon(mime) {
-  if (!mime) return '📄';
-  if (mime.includes('pdf')) return '📕';
-  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return '📗';
-  if (mime.includes('word') || mime.includes('document')) return '📘';
-  if (mime.includes('zip') || mime.includes('compressed')) return '🗜';
-  if (mime.includes('image')) return '🖼';
-  return '📎';
+function fileUrl(id, download) {
+  const url = apiUrl(`/files/${id}${download ? '/download' : ''}`);
+  const token = localStorage.getItem('accessToken');
+  if (!token) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
 }
 
-const styles = {
-  chip: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 12px',
-    background: 'var(--bg-input)',
-    border: '1px solid var(--border)',
-    borderRadius: '6px',
-    textDecoration: 'none',
-    maxWidth: '320px',
-    transition: 'border-color 0.15s',
-  },
-  icon: { fontSize: '20px', flexShrink: 0 },
-  info: { display: 'flex', flexDirection: 'column', minWidth: 0 },
-  name: {
-    color: 'var(--text-primary)',
-    fontSize: '13px',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  size: { color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' },
-  imgLink: {
-    display: 'inline-block',
-    textDecoration: 'none',
-  },
-  img: {
-    display: 'block',
-    maxWidth: '320px',
-    maxHeight: '240px',
-    borderRadius: '6px',
-    border: '1px solid var(--border)',
-    objectFit: 'contain',
-    cursor: 'pointer',
-  },
-  imgName: { display: 'block', fontSize: '11px', marginTop: '4px' },
-};
+function FileIcon({ mime }) {
+  if (!mime) return <File size={20} />;
+  if (mime.includes('pdf') || mime.includes('word') || mime.includes('document')) return <FileText size={20} />;
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return <FileSpreadsheet size={20} />;
+  if (mime.includes('zip') || mime.includes('compressed')) return <Archive size={20} />;
+  if (mime.includes('image')) return <ImageIcon size={20} />;
+  return <File size={20} />;
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function repairFileName(name) {
+  const value = String(name || '').trim();
+  if (!value) return '\uD30C\uC77C';
+  try {
+    const repaired = decodeURIComponent(escape(value));
+    if (repaired && !repaired.includes('\uFFFD') && /[\uAC00-\uD7A3]/.test(repaired)) return repaired;
+  } catch (_) {}
+  return value;
+}

@@ -8,52 +8,77 @@ const upload = require('../middleware/upload');
 const router = express.Router();
 const UPLOAD_DIR = process.env.UPLOAD_PATH || path.join(__dirname, '..', 'uploads');
 
-// POST /api/upload - 파일 업로드 (메시지 전송 전에 미리 업로드)
 router.post('/', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
 
   const { originalname, filename, mimetype, size } = req.file;
-
-  // 이미지 크기 추출 (간단히 mime 타입으로 구분)
+  const displayName = decodeUploadFileName(originalname);
   const isImage = mimetype.startsWith('image/');
 
   const attachId = run(`
     INSERT INTO attachments (file_name, stored_name, mime_type, file_size, uploaded_by, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
-  `, [originalname, filename, mimetype, size, req.user.id, now()]).lastInsertRowid;
+  `, [displayName, filename, mimetype, size, req.user.id, now()]).lastInsertRowid;
 
   res.json({
     id: attachId,
-    fileName: originalname,
+    fileName: displayName,
     mimeType: mimetype,
     fileSize: size,
     isImage,
     url: `/api/files/${attachId}`,
+    downloadUrl: `/api/files/${attachId}/download`,
   });
 });
 
-// GET /api/files/avatar/:filename - 아바타 이미지 서빙
 router.get('/avatar/:filename', requireAuth, (req, res) => {
   const { filename } = req.params;
   if (!/^[0-9a-f-]+\.[a-zA-Z]{2,5}$/.test(filename)) {
-    return res.status(400).json({ error: '잘못된 파일명' });
+    return res.status(400).json({ error: '올바르지 않은 파일명입니다.' });
   }
   const filePath = path.join(UPLOAD_DIR, filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: '파일 없음' });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: '파일이 없습니다.' });
   res.sendFile(filePath);
 });
 
-// GET /api/files/:id - 파일 다운로드 (인증 필수)
+router.get('/:id/download', requireAuth, (req, res) => {
+  sendAttachment(req, res, 'attachment');
+});
+
 router.get('/:id', requireAuth, (req, res) => {
+  sendAttachment(req, res, 'inline');
+});
+
+function sendAttachment(req, res, disposition) {
   const attachment = get('SELECT * FROM attachments WHERE id = ?', [req.params.id]);
-  if (!attachment) return res.status(404).json({ error: '파일 없음' });
+  if (!attachment) return res.status(404).json({ error: '파일이 없습니다.' });
 
   const filePath = path.join(UPLOAD_DIR, attachment.stored_name);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: '파일이 삭제되었습니다.' });
 
-  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
+  res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
   res.setHeader('Content-Type', attachment.mime_type || 'application/octet-stream');
   res.sendFile(filePath);
-});
+}
+
+function decodeUploadFileName(name) {
+  if (!name) return 'file';
+  const cleaned = String(name).replace(/[\\/:*?"<>|]/g, '_').trim();
+
+  try {
+    const repaired = Buffer.from(cleaned, 'latin1').toString('utf8');
+    const safeRepaired = repaired.replace(/[\\/:*?"<>|]/g, '_').trim();
+    if (looksBetter(safeRepaired, cleaned)) return safeRepaired;
+  } catch (_) {}
+
+  return cleaned || 'file';
+}
+
+function looksBetter(repaired, original) {
+  if (!repaired || repaired.includes('\uFFFD')) return false;
+  const originalBrokenScore = (original.match(/[ÃÂìíëêð]/g) || []).length;
+  const repairedKoreanScore = (repaired.match(/[\uAC00-\uD7A3]/g) || []).length;
+  return repairedKoreanScore > 0 || originalBrokenScore >= 2;
+}
 
 module.exports = router;

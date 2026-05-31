@@ -11,6 +11,7 @@ COPY server/package*.json ./
 RUN npm install --production
 COPY server/ ./
 COPY --from=builder /app/server/public ./public
+COPY downloads/ ./public/downloads/
 
 RUN mkdir -p /app/data/uploads
 

@@ -1,0 +1,15 @@
+{
+  "appId": "com.emessenger.app",
+  "appName": "E-Messenger",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#fee500",
+      "showSpinner": false
+    }
+  }
+}

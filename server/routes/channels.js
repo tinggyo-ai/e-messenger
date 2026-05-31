@@ -29,7 +29,8 @@ router.get('/', (req, res) => {
         SELECT COUNT(*) FROM messages m
         WHERE m.channel_id = c.id
           AND m.is_deleted = 0
-          AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+          AND m.sender_id != ?
+          AND (cm.last_read_at IS NULL OR datetime(m.created_at) > datetime(cm.last_read_at))
       ) AS unread_count,
       (
         SELECT m2.body FROM messages m2
@@ -45,7 +46,7 @@ router.get('/', (req, res) => {
     JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = ?
     WHERE c.is_archived = 0
     ORDER BY COALESCE(last_message_at, c.created_at) DESC
-  `, [userId]);
+  `, [userId, userId]);
 
   // DM 채널은 상대방 이름으로 표시
   const enriched = channels.map(ch => {
@@ -219,6 +220,10 @@ router.get('/:id/messages', (req, res) => {
 // POST /api/channels/:id/read - 읽음 처리
 router.post('/:id/read', (req, res) => {
   const chId = Number(req.params.id);
+  const membership = get('SELECT 1 FROM channel_members WHERE channel_id = ? AND user_id = ?',
+    [chId, req.user.id]);
+  if (!membership) return res.status(403).json({ error: '채팅방 권한이 없습니다.' });
+
   const lastReadAt = now();
   run(`
     UPDATE channel_members SET last_read_at = ?

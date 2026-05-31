@@ -1,18 +1,24 @@
 import axios from 'axios';
 
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+export function apiUrl(path) {
+  const cleanBase = API_BASE_URL.replace(/\/$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${cleanBase}${cleanPath}`;
+}
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
-// JWT 액세스 토큰 자동 첨부
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('accessToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// 401 시 refresh 시도
 let isRefreshing = false;
 let refreshQueue = [];
 
@@ -20,13 +26,11 @@ api.interceptors.response.use(
   res => res,
   async err => {
     const original = err.config;
-    if (err.response?.status === 401 && !original._retry) {
-      // 인증 체크 전용 요청은 리다이렉트 없이 그냥 reject
+    if (err.response?.status === 401 && original && !original._retry) {
       if (original.skipAuthRedirect) return Promise.reject(err);
 
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) {
-        // 이미 로그인 페이지면 루프 방지
         if (!localStorage.getItem('accessToken')) return Promise.reject(err);
         localStorage.clear();
         window.location.href = '/';
@@ -46,14 +50,14 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+        const { data } = await axios.post(apiUrl('/auth/refresh'), { refreshToken }, { withCredentials: true });
         localStorage.setItem('accessToken', data.accessToken);
         refreshQueue.forEach(p => p.resolve(data.accessToken));
         refreshQueue = [];
         original.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(original);
-      } catch (_) {
-        refreshQueue.forEach(p => p.reject(_));
+      } catch (refreshErr) {
+        refreshQueue.forEach(p => p.reject(refreshErr));
         refreshQueue = [];
         localStorage.clear();
         window.location.href = '/';

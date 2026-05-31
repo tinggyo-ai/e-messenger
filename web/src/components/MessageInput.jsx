@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import api from '../api/client';
+import { useEffect, useRef, useState } from 'react';
+import { FileText, Image as ImageIcon, Loader2, Paperclip, Send, X } from 'lucide-react';
+import api, { apiUrl } from '../api/client';
 
 export default function MessageInput({ channelId, onSend, onTyping }) {
   const [body, setBody] = useState('');
@@ -7,15 +8,15 @@ export default function MessageInput({ channelId, onSend, onTyping }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
   const typingTimer = useRef(null);
 
-  // 채널 변경 또는 언마운트 시 타이핑 타이머 정리
   useEffect(() => {
     return () => {
       clearTimeout(typingTimer.current);
       onTyping && onTyping(false);
     };
-  }, [channelId]);
+  }, [channelId, onTyping]);
 
   async function uploadFile(file) {
     const formData = new FormData();
@@ -32,14 +33,14 @@ export default function MessageInput({ channelId, onSend, onTyping }) {
     try {
       const uploads = await Promise.all(Array.from(files).map(uploadFile));
       setPendingFiles(prev => [...prev, ...uploads]);
+      focusComposer();
     } catch (err) {
-      alert('파일 업로드 실패: ' + (err.response?.data?.error || err.message));
+      alert(`파일 업로드 실패: ${err.response?.data?.error || err.message}`);
     } finally {
       setUploading(false);
     }
   }
 
-  // Ctrl+V 클립보드 붙여넣기
   function handlePaste(e) {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -56,34 +57,45 @@ export default function MessageInput({ channelId, onSend, onTyping }) {
     }
   }
 
-  // 드래그앤드롭
   function handleDrop(e) {
     e.preventDefault();
     setDragOver(false);
     handleFiles(e.dataTransfer.files);
   }
 
-  async function handleSend() {
+  function handleSend(e) {
+    e?.preventDefault();
     const trimmed = body.trim();
-    if (!trimmed && pendingFiles.length === 0) return;
+    if (!trimmed && pendingFiles.length === 0) {
+      focusComposer();
+      return;
+    }
 
     const attachmentIds = pendingFiles.map(f => f.id);
     setBody('');
     setPendingFiles([]);
+    resetTextareaHeight();
+    onTyping && onTyping(false);
     onSend({ channelId, body: trimmed, attachmentIds });
+    focusComposer();
+  }
+
+  function handlePointerDown(e) {
+    e.preventDefault();
   }
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!uploading) handleSend();
+      if (!uploading) handleSend(e);
     }
   }
 
   function handleChange(e) {
     setBody(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
 
-    // 타이핑 디바운스
     onTyping && onTyping(true);
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => onTyping && onTyping(false), 2000);
@@ -91,151 +103,116 @@ export default function MessageInput({ channelId, onSend, onTyping }) {
 
   function removePending(idx) {
     setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+    focusComposer();
+  }
+
+  function focusComposer() {
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
+  }
+
+  function resetTextareaHeight() {
+    requestAnimationFrame(() => {
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    });
   }
 
   return (
     <div
-      style={{ ...styles.root, borderColor: dragOver ? 'var(--border-active)' : 'var(--border)' }}
+      className="composer"
+      style={{ outline: dragOver ? '2px solid rgba(254, 229, 0, 0.9)' : 'none' }}
       onDragOver={e => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      {/* 첨부 파일 미리보기 */}
       {pendingFiles.length > 0 && (
-        <div style={styles.pendingRow}>
-          {pendingFiles.map((f, i) => (
-            <div key={i} style={styles.pendingChip}>
-              {f.isImage
-                ? <img src={f.url} alt={f.fileName} style={styles.pendingThumb} />
-                : <span style={styles.pendingIcon}>📎</span>
-              }
-              <span style={styles.pendingName}>{f.fileName}</span>
-              <button style={styles.removeBtn} onClick={() => removePending(i)}>✕</button>
-            </div>
-          ))}
+        <div className="pending-row">
+          {pendingFiles.map((f, i) => {
+            const displayName = repairFileName(f.fileName || f.file_name || '파일');
+            return (
+              <div key={`${f.id}-${i}`} className="pending-chip">
+                {f.isImage
+                  ? <img src={fileUrl(f.id)} alt={displayName} />
+                  : <FileText size={18} />
+                }
+                <span className="pending-name" title={displayName}>{displayName}</span>
+                <button
+                  className="icon-button"
+                  style={{ width: 24, height: 24 }}
+                  onPointerDown={handlePointerDown}
+                  onClick={() => removePending(i)}
+                  title="첨부 삭제"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div style={styles.inputRow}>
+      <form className="composer-row" onSubmit={handleSend}>
         <button
-          style={styles.attachBtn}
+          type="button"
+          className="icon-button"
           title="파일 첨부"
+          onPointerDown={handlePointerDown}
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? '⏳' : '📎'}
+          {uploading ? <Loader2 size={21} className="spin" /> : <Paperclip size={21} />}
         </button>
 
         <textarea
-          style={styles.textarea}
+          ref={textareaRef}
+          className="message-textarea"
           value={body}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={dragOver ? '파일을 여기에 놓으세요' : '메시지를 입력하세요  (Shift+Enter: 줄바꿈)'}
+          placeholder={dragOver ? '파일을 여기에 놓으세요' : '메시지를 입력하세요'}
           rows={1}
         />
 
         <button
-          style={{
-            ...styles.sendBtn,
-            opacity: (body.trim() || pendingFiles.length > 0) ? 1 : 0.4,
-          }}
-          onClick={handleSend}
+          type="submit"
+          className="send-button"
+          onPointerDown={handlePointerDown}
           disabled={uploading || (!body.trim() && pendingFiles.length === 0)}
+          title="전송"
         >
-          ↑
+          {pendingFiles.some(f => f.isImage) && !body.trim() ? <ImageIcon size={19} /> : <Send size={19} />}
         </button>
-      </div>
+      </form>
 
       <input
         ref={fileInputRef}
         type="file"
         multiple
         style={{ display: 'none' }}
-        onChange={e => handleFiles(e.target.files)}
+        onChange={e => {
+          handleFiles(e.target.files);
+          e.target.value = '';
+        }}
       />
     </div>
   );
 }
 
-const styles = {
-  root: {
-    borderTop: '1px solid',
-    borderColor: 'var(--border)',
-    padding: '12px 16px',
-    background: 'var(--bg-panel)',
-    transition: 'border-color 0.15s',
-  },
-  pendingRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-    marginBottom: '10px',
-  },
-  pendingChip: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '4px 8px',
-    background: 'var(--bg-input)',
-    border: '1px solid var(--border)',
-    borderRadius: '4px',
-    maxWidth: '200px',
-  },
-  pendingThumb: { width: '32px', height: '32px', objectFit: 'cover', borderRadius: '2px' },
-  pendingIcon: { fontSize: '18px' },
-  pendingName: {
-    fontSize: '12px',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    flex: 1,
-    minWidth: 0,
-  },
-  removeBtn: {
-    color: 'var(--text-muted)',
-    fontSize: '12px',
-    flexShrink: 0,
-    padding: '2px',
-  },
-  inputRow: { display: 'flex', alignItems: 'flex-end', gap: '8px' },
-  attachBtn: {
-    fontSize: '20px',
-    padding: '6px',
-    color: 'var(--text-muted)',
-    borderRadius: '4px',
-    flexShrink: 0,
-    transition: 'color 0.15s',
-  },
-  textarea: {
-    flex: 1,
-    resize: 'none',
-    background: 'var(--bg-input)',
-    border: '1px solid var(--border)',
-    borderRadius: '6px',
-    padding: '10px 12px',
-    color: 'var(--text-primary)',
-    fontSize: '14px',
-    lineHeight: '1.5',
-    outline: 'none',
-    maxHeight: '160px',
-    overflowY: 'auto',
-    fontFamily: 'var(--font-main)',
-    transition: 'border-color 0.15s',
-  },
-  sendBtn: {
-    width: '36px',
-    height: '36px',
-    background: 'var(--accent-cyan)',
-    color: '#000',
-    borderRadius: '6px',
-    fontSize: '18px',
-    fontWeight: '700',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    transition: 'opacity 0.15s',
-  },
-};
+function fileUrl(id) {
+  const url = apiUrl(`/files/${id}`);
+  const token = localStorage.getItem('accessToken');
+  if (!token) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+}
+
+function repairFileName(name) {
+  const value = String(name || '').trim();
+  if (!value) return '파일';
+  try {
+    const repaired = decodeURIComponent(escape(value));
+    if (repaired && !repaired.includes('\uFFFD') && /[\uAC00-\uD7A3]/.test(repaired)) return repaired;
+  } catch (_) {}
+  return value;
+}

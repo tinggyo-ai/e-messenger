@@ -1,4 +1,7 @@
 node_modules/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 server/database/nexus.sqlite
 server/database/nexus.sqlite-shm
 server/database/nexus.sqlite-wal
@@ -8,3 +11,9 @@ server/public/
 .env
 *.log
 dist-electron/
+release/
+*.exe
+*.zip
+*.apk
+*.aab
+web/dist/

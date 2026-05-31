@@ -1,11 +1,25 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, AtSign, Bookmark, Hash, UsersRound } from 'lucide-react';
 import useStore from '../store/useStore';
 import MessageItem from './MessageItem';
 import MessageInput from './MessageInput';
 import api from '../api/client';
 
 export default function ChannelView({ socket, isMobile, onBack }) {
-  const { activeChannelId, channels, messages, appendMessage, setMessages, prependMessages, user, typing, markChannelRead, channelReaders, setChannelReaders } = useStore();
+  const {
+    activeChannelId,
+    channels,
+    messages,
+    appendMessage,
+    setMessages,
+    prependMessages,
+    user,
+    typing,
+    markChannelRead,
+    channelReaders,
+    setChannelReaders,
+    updateReader,
+  } = useStore();
   const channel = channels.find(c => c.id === activeChannelId);
   const msgs = messages[activeChannelId] || [];
   const bottomRef = useRef(null);
@@ -15,7 +29,6 @@ export default function ChannelView({ socket, isMobile, onBack }) {
   const [sendError, setSendError] = useState('');
   const [channelMembers, setChannelMembers] = useState([]);
 
-  // 채널 변경 시 메시지 + 멤버 읽음 상태 로드
   useEffect(() => {
     if (!activeChannelId) return;
     setHasMore(true);
@@ -32,28 +45,38 @@ export default function ChannelView({ socket, isMobile, onBack }) {
       setChannelReaders(activeChannelId, readers);
     });
 
-    markChannelRead(activeChannelId);
-    api.post(`/channels/${activeChannelId}/read`).catch(() => {});
-  }, [activeChannelId]);
+    markAsRead(activeChannelId);
+  }, [activeChannelId, socket]);
 
-  // 소켓 메시지 수신
   useEffect(() => {
     if (!socket) return;
 
     function onNewMessage(msg) {
       const msgChannelId = msg.channel_id ?? msg.channelId;
       if (msgChannelId !== activeChannelId) return;
+
       appendMessage(activeChannelId, msg);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 30);
-      markChannelRead(activeChannelId);
-      api.post(`/channels/${activeChannelId}/read`).catch(() => {});
+      markAsRead(activeChannelId);
     }
 
     socket.on('new_message', onNewMessage);
     return () => socket.off('new_message', onNewMessage);
-  }, [socket, activeChannelId]);
+  }, [socket, activeChannelId, appendMessage]);
 
-  // 위로 스크롤 → 이전 메시지 로드
+  function markAsRead(channelId) {
+    if (!channelId || !user?.id) return;
+    const readAt = new Date().toISOString();
+    markChannelRead(channelId);
+    updateReader(channelId, user.id, readAt);
+
+    if (socket?.connected) {
+      socket.emit('mark_read', { channelId });
+    } else {
+      api.post(`/channels/${channelId}/read`).catch(() => {});
+    }
+  }
+
   function handleScroll() {
     if (!listRef.current || loadingMore || !hasMore) return;
     if (listRef.current.scrollTop < 80 && msgs.length > 0) {
@@ -71,7 +94,6 @@ export default function ChannelView({ socket, isMobile, onBack }) {
       if (data.length > 0) {
         const prevScrollHeight = listRef.current.scrollHeight;
         prependMessages(activeChannelId, data);
-        // 스크롤 위치 보존
         requestAnimationFrame(() => {
           if (listRef.current) {
             listRef.current.scrollTop = listRef.current.scrollHeight - prevScrollHeight;
@@ -85,7 +107,7 @@ export default function ChannelView({ socket, isMobile, onBack }) {
 
   function handleSend(data) {
     if (!socket || !socket.connected) {
-      setSendError('서버에 연결되지 않았습니다. 새로고침 후 다시 시도하세요.');
+      setSendError('서버에 연결되지 않았습니다. 잠시 후 다시 시도하세요.');
       return;
     }
     setSendError('');
@@ -101,36 +123,37 @@ export default function ChannelView({ socket, isMobile, onBack }) {
 
   if (!activeChannelId) {
     return (
-      <div style={styles.empty}>
-        <div style={styles.emptyText}>채널을 선택하세요</div>
-      </div>
+      <main className="channel-view">
+        <div className="empty-state">
+          <div>
+            <UsersRound size={34} style={{ margin: '0 auto 10px', display: 'block' }} />
+            대화를 선택하세요.
+          </div>
+        </div>
+      </main>
     );
   }
 
   const channelTyping = (typing[activeChannelId] || []).filter(t => t.userId !== user?.id);
+  const title = getChannelTitle(channel);
 
   return (
-    <div style={styles.root}>
-      {/* 채널 헤더 */}
-      <div style={styles.header}>
+    <main className="channel-view">
+      <header className="channel-header">
         {isMobile && (
-          <button style={styles.backBtn} onClick={onBack}>‹</button>
+          <button className="icon-button" onClick={onBack} title="목록으로">
+            <ArrowLeft size={22} />
+          </button>
         )}
-        <span style={styles.channelIcon}>{channel?.type === 'direct' ? '@' : '#'}</span>
-        <span style={styles.channelName}>
-          {channel?.type === 'direct' ? channel?.dm_user?.name : channel?.name}
-          {channel?.type === 'self' && ' (나에게)'}
-        </span>
-        {channel?.description && !isMobile && (
-          <span style={styles.channelDesc}>— {channel.description}</span>
-        )}
-      </div>
+        <ChannelIcon channel={channel} />
+        <div className="channel-title">
+          <div className="channel-name">{title}</div>
+          {channel?.description && <div className="channel-desc">{channel.description}</div>}
+        </div>
+      </header>
 
-      {/* 메시지 목록 */}
-      <div style={styles.list} ref={listRef} onScroll={handleScroll}>
-        {loadingMore && (
-          <div style={styles.loadingMore}>이전 메시지 불러오는 중...</div>
-        )}
+      <div className="message-list" ref={listRef} onScroll={handleScroll}>
+        {loadingMore && <div className="loading-more">이전 메시지를 불러오는 중...</div>}
         {msgs.map((msg, i) => (
           <MessageItem
             key={msg.id || `tmp-${i}`}
@@ -142,108 +165,38 @@ export default function ChannelView({ socket, isMobile, onBack }) {
           />
         ))}
         {channelTyping.length > 0 && (
-          <div style={styles.typing}>
-            <div style={styles.typingDots}>
-              <span /><span /><span />
-            </div>
-            <span style={styles.typingText}>
-              {channelTyping.map(t => t.userName).join(', ')} 입력 중...
-            </span>
+          <div className="typing-row">
+            <div className="typing-dots"><span /><span /><span /></div>
+            <span>{channelTyping.map(t => t.userName).join(', ')} 입력 중</span>
           </div>
         )}
         <div ref={bottomRef} style={{ height: 1 }} />
       </div>
 
-      {/* 전송 에러 */}
       {sendError && (
-        <div style={styles.sendError} onClick={() => setSendError('')}>
-          ⚠ {sendError}
+        <div className="send-error" onClick={() => setSendError('')}>
+          {sendError}
         </div>
       )}
 
-      {/* 입력창 */}
       <MessageInput
         channelId={activeChannelId}
         onSend={handleSend}
         onTyping={handleTyping}
       />
-    </div>
+    </main>
   );
 }
 
-const styles = {
-  root: { display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' },
-  header: {
-    height: 'var(--header-height)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '0 20px',
-    borderBottom: '1px solid var(--border)',
-    background: 'var(--bg-panel)',
-    flexShrink: 0,
-  },
-  backBtn: {
-    fontSize: '28px',
-    lineHeight: 1,
-    color: 'var(--accent-cyan)',
-    padding: '0 8px 0 0',
-    flexShrink: 0,
-  },
-  channelIcon: {
-    fontFamily: 'var(--font-mono)',
-    color: 'var(--text-muted)',
-    fontSize: '16px',
-  },
-  channelName: { fontWeight: '700', fontSize: '15px' },
-  channelDesc: { color: 'var(--text-muted)', fontSize: '13px' },
-  list: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '8px 0 16px',
-    background: 'var(--bg-deep)',
-  },
-  loadingMore: {
-    textAlign: 'center',
-    padding: '12px',
-    color: 'var(--text-muted)',
-    fontSize: '12px',
-    fontFamily: 'var(--font-mono)',
-  },
-  typing: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '4px 16px 8px',
-  },
-  typingDots: {
-    display: 'flex',
-    gap: '3px',
-    alignItems: 'center',
-  },
-  typingText: {
-    fontSize: '12px',
-    color: 'var(--text-muted)',
-    fontStyle: 'italic',
-  },
-  empty: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'var(--bg-deep)',
-  },
-  emptyText: {
-    color: 'var(--text-muted)',
-    fontSize: '14px',
-    fontFamily: 'var(--font-mono)',
-  },
-  sendError: {
-    background: 'rgba(255,59,92,0.12)',
-    border: '1px solid rgba(255,59,92,0.4)',
-    color: 'var(--accent-red)',
-    fontSize: '12px',
-    padding: '6px 16px',
-    cursor: 'pointer',
-  },
-};
+function ChannelIcon({ channel }) {
+  if (channel?.type === 'direct') return <AtSign size={22} color="var(--text-soft)" />;
+  if (channel?.type === 'self') return <Bookmark size={22} color="var(--text-soft)" />;
+  return <Hash size={22} color="var(--text-soft)" />;
+}
+
+function getChannelTitle(channel) {
+  if (!channel) return '대화';
+  if (channel.type === 'direct') return channel.dm_user?.name || '대화';
+  if (channel.type === 'self') return '나에게 보내기';
+  return channel.name || '그룹 채팅';
+}

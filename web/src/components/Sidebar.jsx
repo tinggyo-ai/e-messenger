@@ -1,14 +1,13 @@
-import { useState } from 'react';
+import { Hash, LogOut, MessageCircle, Plus, Settings, UserRound, Bookmark } from 'lucide-react';
 import useStore from '../store/useStore';
 import api from '../api/client';
 import { getSocket, disconnectSocket } from '../api/socket';
 
 export default function Sidebar({ onNewDM, onNewChannel, onAdmin }) {
   const { user, channels, activeChannelId, setActiveChannel, setChannels, presence, logout } = useStore();
-  const [collapsed, setCollapsed] = useState({ channels: false, dms: false });
 
-  const groupChannels = channels.filter(c => c.type === 'group');
-  const dmChannels = channels.filter(c => c.type === 'direct');
+  const groupChannels = sortChannels(channels.filter(c => c.type === 'group'));
+  const dmChannels = sortChannels(channels.filter(c => c.type === 'direct'));
   const selfChannel = channels.find(c => c.type === 'self');
 
   function handleSelect(id) {
@@ -36,237 +35,142 @@ export default function Sidebar({ onNewDM, onNewChannel, onAdmin }) {
     getSocket()?.emit('join_channel', { channelId: ch.id });
   }
 
-  const isOnline = (userId) => presence[userId] === 'online';
-
   return (
-    <aside style={styles.sidebar}>
-      {/* 브랜드 헤더 */}
-      <div style={styles.brand}>
-        <span style={styles.brandName}>NEXUS</span>
-      </div>
-
-      {/* 채널 섹션 */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader} onClick={() => setCollapsed(c => ({ ...c, channels: !c.channels }))}>
-          <span style={styles.sectionLabel}>채널</span>
-          <button style={styles.addBtn} onClick={e => { e.stopPropagation(); onNewChannel(); }}>+</button>
+    <aside className="sidebar">
+      <header className="sidebar-header">
+        <div className="brand">
+          <div className="brand-mark">E</div>
+          <div className="brand-name">E-Messenger</div>
         </div>
-        {!collapsed.channels && groupChannels.map(ch => (
-          <ChannelItem
-            key={ch.id}
-            channel={ch}
-            active={ch.id === activeChannelId}
-            onClick={() => handleSelect(ch.id)}
-            prefix="#"
-          />
-        ))}
-      </div>
-
-      {/* DM 섹션 */}
-      <div style={styles.section}>
-        <div style={styles.sectionHeader} onClick={() => setCollapsed(c => ({ ...c, dms: !c.dms }))}>
-          <span style={styles.sectionLabel}>다이렉트 메시지</span>
-          <button style={styles.addBtn} onClick={e => { e.stopPropagation(); onNewDM(); }}>+</button>
-        </div>
-        {!collapsed.dms && dmChannels.map(ch => (
-          <ChannelItem
-            key={ch.id}
-            channel={ch}
-            active={ch.id === activeChannelId}
-            onClick={() => handleSelect(ch.id)}
-            prefix=""
-            dmName={ch.dm_user?.name || 'DM'}
-            online={ch.dm_user ? isOnline(ch.dm_user.id) : false}
-          />
-        ))}
-      </div>
-
-      {/* 나에게 */}
-      <div
-        style={{
-          ...styles.item,
-          margin: '4px 4px 0',
-          background: selfChannel && selfChannel.id === activeChannelId ? 'var(--bg-input)' : 'transparent',
-        }}
-        onClick={handleSelfChannel}
-      >
-        {selfChannel && selfChannel.id === activeChannelId && <div style={styles.activeBar} />}
-        <span style={{ fontSize: '14px' }}>📌</span>
-        <span style={{ ...styles.itemName, color: 'var(--text-muted)', fontSize: '13px' }}>나에게</span>
-        {selfChannel && (selfChannel.unread_count || 0) > 0 && (
-          <span style={styles.badge}>{selfChannel.unread_count}</span>
-        )}
-      </div>
-
-      {/* 내 프로필 + 버튼들 */}
-      <div style={styles.profile}>
-        <div style={styles.profileDot(true)} />
-        <div style={styles.profileInfo}>
-          <span style={styles.profileName}>{user?.name}</span>
-          <span style={styles.profileSub}>{user?.department}</span>
-        </div>
-        <div style={styles.profileActions}>
+        <div className="sidebar-actions">
           {user?.role === 'admin' && (
-            <button style={styles.iconBtn} onClick={onAdmin}>관리</button>
+            <button className="icon-button" onClick={onAdmin} title="관리자">
+              <Settings size={19} />
+            </button>
           )}
-          <button style={{ ...styles.iconBtn, color: 'var(--accent-red)' }} onClick={handleLogout}>로그아웃</button>
+          <button className="icon-button" onClick={handleLogout} title="로그아웃">
+            <LogOut size={19} />
+          </button>
         </div>
+      </header>
+
+      <section className="profile-strip">
+        <div className="avatar" style={{ background: colorFromName(user?.name) }}>
+          {user?.name?.charAt(0) || 'E'}
+        </div>
+        <div className="profile-info">
+          <div className="profile-name">{user?.name}</div>
+          <div className="profile-meta">{[user?.department, user?.position].filter(Boolean).join(' · ') || '온라인'}</div>
+        </div>
+      </section>
+
+      <div className="chat-sections">
+        <SectionTitle label="대화" onAdd={onNewDM} />
+        {dmChannels.map(ch => (
+          <ChatRow
+            key={ch.id}
+            channel={ch}
+            active={ch.id === activeChannelId}
+            icon="dm"
+            name={ch.dm_user?.name || '대화'}
+            online={presence[ch.dm_user?.id] === 'online'}
+            onClick={() => handleSelect(ch.id)}
+          />
+        ))}
+
+        <button
+          className={`chat-row ${selfChannel?.id === activeChannelId ? 'active' : ''}`}
+          onClick={handleSelfChannel}
+        >
+          <div className="avatar" style={{ background: '#59636e' }}>
+            <Bookmark size={20} />
+          </div>
+          <div className="chat-main">
+            <div className="chat-topline">
+              <span className="chat-name">나에게 보내기</span>
+              {selfChannel?.unread_count > 0 && <span className="unread-badge">{formatUnread(selfChannel.unread_count)}</span>}
+            </div>
+            <div className="chat-preview">메모와 파일을 보관하세요.</div>
+          </div>
+        </button>
+
+        <SectionTitle label="그룹 채팅" onAdd={onNewChannel} />
+        {groupChannels.map(ch => (
+          <ChatRow
+            key={ch.id}
+            channel={ch}
+            active={ch.id === activeChannelId}
+            icon="group"
+            name={ch.name || '그룹 채팅'}
+            onClick={() => handleSelect(ch.id)}
+          />
+        ))}
       </div>
     </aside>
   );
 }
 
-function ChannelItem({ channel, active, onClick, prefix, dmName, online }) {
-  const name = dmName || channel.name || '';
-  const unread = channel.unread_count || 0;
-
+function SectionTitle({ label, onAdd }) {
   return (
-    <div style={{ ...styles.item, background: active ? 'var(--bg-input)' : 'transparent' }} onClick={onClick}>
-      {active && <div style={styles.activeBar} />}
-      {online !== undefined && (
-        <div style={styles.onlineDot(online)} />
-      )}
-      <span style={{ ...styles.itemName, color: active ? 'var(--text-primary)' : (unread > 0 ? 'var(--text-primary)' : 'var(--text-muted)') }}>
-        {prefix}{name}
-      </span>
-      {unread > 0 && (
-        <span style={styles.badge}>{unread > 99 ? '99+' : unread}</span>
-      )}
+    <div className="section-title">
+      <span>{label}</span>
+      <button className="icon-button" onClick={onAdd} title={`${label} 추가`}>
+        <Plus size={17} />
+      </button>
     </div>
   );
 }
 
-const styles = {
-  sidebar: {
-    width: 'var(--sidebar-width)',
-    background: 'var(--bg-panel)',
-    borderRight: '1px solid var(--border)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  brand: {
-    height: 'var(--header-height)',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 16px',
-    borderBottom: '1px solid var(--border)',
-    borderLeft: '3px solid var(--accent-cyan)',
-  },
-  brandName: {
-    fontFamily: 'var(--font-mono)',
-    fontSize: '16px',
-    fontWeight: '700',
-    color: 'var(--accent-cyan)',
-    letterSpacing: '4px',
-    textShadow: '0 0 8px rgba(0,212,255,0.4)',
-  },
-  section: { paddingTop: '8px' },
-  sectionHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '4px 12px 4px 16px',
-    cursor: 'pointer',
-    userSelect: 'none',
-  },
-  sectionLabel: {
-    fontSize: '11px',
-    fontWeight: '700',
-    color: 'var(--text-muted)',
-    letterSpacing: '0.8px',
-    textTransform: 'uppercase',
-  },
-  addBtn: {
-    width: '20px',
-    height: '20px',
-    borderRadius: '3px',
-    color: 'var(--text-muted)',
-    fontSize: '16px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    background: 'none',
-    border: 'none',
-    lineHeight: 1,
-  },
-  item: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '5px 16px',
-    cursor: 'pointer',
-    position: 'relative',
-    borderRadius: '4px',
-    margin: '1px 4px',
-    transition: 'background 0.1s',
-    userSelect: 'none',
-  },
-  activeBar: {
-    position: 'absolute',
-    left: 0,
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: '3px',
-    height: '60%',
-    background: 'var(--accent-cyan)',
-    borderRadius: '0 2px 2px 0',
-    boxShadow: '0 0 6px rgba(0,212,255,0.5)',
-  },
-  itemName: {
-    flex: 1,
-    fontSize: '13px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  badge: {
-    background: 'var(--accent-red)',
-    color: '#fff',
-    fontSize: '10px',
-    fontFamily: 'var(--font-mono)',
-    fontWeight: '700',
-    padding: '1px 5px',
-    borderRadius: '10px',
-    flexShrink: 0,
-  },
-  onlineDot: (online) => ({
-    width: '7px',
-    height: '7px',
-    borderRadius: '50%',
-    background: online ? 'var(--accent-green)' : 'var(--text-muted)',
-    flexShrink: 0,
-    animation: online ? 'pulse-green 2s infinite' : 'none',
-  }),
-  profile: {
-    marginTop: 'auto',
-    borderTop: '1px solid var(--border)',
-    padding: '12px 16px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  profileDot: (online) => ({
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: online ? 'var(--accent-green)' : 'var(--text-muted)',
-    flexShrink: 0,
-    animation: online ? 'pulse-green 2s infinite' : 'none',
-  }),
-  profileInfo: { display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 },
-  profileName: { fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' },
-  profileSub: { fontSize: '11px', color: 'var(--text-muted)' },
-  profileActions: { display: 'flex', gap: '2px', flexShrink: 0 },
-  iconBtn: {
-    height: '26px', borderRadius: '4px',
-    padding: '0 8px',
-    color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'color 0.15s, background 0.15s',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-};
+function ChatRow({ channel, active, icon, name, online, onClick }) {
+  const unread = channel.unread_count || 0;
+  const lastBody = channel.last_message || (icon === 'group' ? '그룹 채팅방' : '새 대화를 시작해보세요.');
+
+  return (
+    <button className={`chat-row ${active ? 'active' : ''}`} onClick={onClick}>
+      <div className="avatar" style={{ background: icon === 'group' ? '#4a8ee8' : colorFromName(name) }}>
+        {icon === 'group' ? <Hash size={20} /> : (name?.charAt(0) || <UserRound size={20} />)}
+      </div>
+      {online && <span className="online-dot" />}
+      <div className="chat-main">
+        <div className="chat-topline">
+          <span className="chat-name">{name}</span>
+          <span className="chat-time">{formatChannelTime(channel.last_message_at)}</span>
+        </div>
+        <div className="chat-topline">
+          <span className="chat-preview">{lastBody}</span>
+          {unread > 0 && <span className="unread-badge">{formatUnread(unread)}</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function sortChannels(list) {
+  return [...list].sort((a, b) => toTime(b.last_message_at) - toTime(a.last_message_at));
+}
+
+function toTime(value) {
+  if (!value) return 0;
+  return new Date(String(value).replace(' ', 'T')).getTime();
+}
+
+function formatChannelTime(value) {
+  if (!value) return '';
+  const d = new Date(String(value).replace(' ', 'T'));
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+}
+
+function formatUnread(count) {
+  return count > 99 ? '99+' : count;
+}
+
+function colorFromName(name = '') {
+  const colors = ['#5567d9', '#21a67a', '#e05f5f', '#7b61d1', '#3d8bd8', '#d8863d'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}

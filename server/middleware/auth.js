@@ -1,10 +1,9 @@
 const jwt = require('jsonwebtoken');
 const { get } = require('../database/db');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'nexus-jwt-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'e-messenger-jwt-secret-change-in-production';
 
 function requireAuth(req, res, next) {
-  // 세션 우선 (웹 클라이언트)
   if (req.session && req.session.userId) {
     const user = get('SELECT id, username, name, role, status FROM users WHERE id = ? AND status = ?',
       [req.session.userId, 'active']);
@@ -14,10 +13,8 @@ function requireAuth(req, res, next) {
     }
   }
 
-  // JWT 폴백 (모바일 클라이언트)
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
+  const token = getBearerToken(req) || req.query.token;
+  if (token) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
       const user = get('SELECT id, username, name, role, status FROM users WHERE id = ? AND status = ?',
@@ -26,7 +23,7 @@ function requireAuth(req, res, next) {
         req.user = user;
         return next();
       }
-    } catch (_) { /* 만료/무효 토큰 */ }
+    } catch (_) {}
   }
 
   res.status(401).json({ error: '인증이 필요합니다.' });
@@ -55,6 +52,14 @@ function verifyRefreshToken(token) {
   } catch (_) {
     return null;
   }
+}
+
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  return null;
 }
 
 module.exports = { requireAuth, requireAdmin, signAccessToken, signRefreshToken, verifyRefreshToken };

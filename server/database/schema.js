@@ -110,26 +110,23 @@ function seedData() {
   const user1Id = db.prepare(`
     INSERT INTO users (username, password_hash, name, department, position, role)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run('user1', bcrypt.hashSync('user1234', 10), '김철수', '개발팀', '팀장', 'member').lastInsertRowid;
+  `).run('user1', bcrypt.hashSync('user1234', 10), '김철수', '개발팀', '대리', 'member').lastInsertRowid;
 
   const user2Id = db.prepare(`
     INSERT INTO users (username, password_hash, name, department, position, role)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run('user2', bcrypt.hashSync('user1234', 10), '이영희', '경영지원팀', '과장', 'member').lastInsertRowid;
 
-  // 전체공지 채널
   const ch1Id = db.prepare(`
     INSERT INTO channels (type, name, description, created_by)
     VALUES (?, ?, ?, ?)
-  `).run('group', '전체공지', '전사 공지사항 채널', adminId).lastInsertRowid;
+  `).run('group', '전체 공지', '회사 공지사항 채팅방', adminId).lastInsertRowid;
 
-  // 일반 채널
   const ch2Id = db.prepare(`
     INSERT INTO channels (type, name, description, created_by)
     VALUES (?, ?, ?, ?)
-  `).run('group', '자유채팅', '자유롭게 대화하는 채널', adminId).lastInsertRowid;
+  `).run('group', '자유 채팅', '자유롭게 대화하는 채팅방', adminId).lastInsertRowid;
 
-  // 멤버 추가
   const addMember = db.prepare(`
     INSERT OR IGNORE INTO channel_members (channel_id, user_id, role) VALUES (?, ?, ?)
   `);
@@ -139,16 +136,15 @@ function seedData() {
     addMember.run(chId, user2Id, 'member');
   });
 
-  // 환영 메시지
   db.prepare(`
     INSERT INTO messages (channel_id, sender_id, body, msg_type)
     VALUES (?, ?, ?, ?)
-  `).run(ch1Id, adminId, 'NEXUS 사내 메신저에 오신 것을 환영합니다.', 'system');
+  `).run(ch1Id, adminId, 'E-Messenger에 오신 것을 환영합니다.', 'system');
 
-  console.log('[DB] 시드 데이터 생성 완료');
-  console.log('  관리자: admin / admin1234');
-  console.log('  사용자1: user1 / user1234');
-  console.log('  사용자2: user2 / user1234');
+  console.log('[DB] Seed data created');
+  console.log('  admin: admin / admin1234');
+  console.log('  user: user1 / user1234');
+  console.log('  user: user2 / user1234');
 }
 
 module.exports = { initSchema, seedData };

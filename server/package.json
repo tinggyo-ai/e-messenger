@@ -1,7 +1,7 @@
 {
-  "name": "nexus-server",
+  "name": "e-messenger-server",
   "version": "1.0.0",
-  "description": "NEXUS 사내 메신저 백엔드",
+  "description": "E-Messenger backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
