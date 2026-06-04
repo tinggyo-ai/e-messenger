@@ -1,8 +1,9 @@
-const { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 const APP_URL = process.env.ELECTRON_APP_URL || 'https://e-messenger.fly.dev';
+const APP_PROTOCOL = 'emessenger';
 let mainWindow = null;
 let tray = null;
 
@@ -11,6 +12,7 @@ function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.js');
   const appUrl = new URL(APP_URL);
   appUrl.searchParams.set('desktop', '1');
+  appUrl.searchParams.set('desktopBuild', String(Date.now()));
 
   mainWindow = new BrowserWindow({
     width: 430,
@@ -89,12 +91,56 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
-app.setAppUserModelId('com.emessenger.app');
+function registerAppProtocol() {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    return;
+  }
 
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-});
+  app.setAsDefaultProtocolClient(APP_PROTOCOL);
+}
+
+function handleProtocolUrl(url) {
+  if (!url || !url.startsWith(`${APP_PROTOCOL}://`)) return;
+  showMainWindow();
+}
+
+async function clearStaleWebCache() {
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      storages: ['appcache', 'serviceworkers', 'cachestorage'],
+    });
+  } catch (error) {
+    console.warn('Failed to clear web cache:', error);
+  }
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.setAppUserModelId('com.emessenger.app');
+  registerAppProtocol();
+
+  app.on('second-instance', (_event, argv) => {
+    const protocolUrl = argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
+    handleProtocolUrl(protocolUrl);
+  });
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleProtocolUrl(url);
+  });
+
+  app.whenReady().then(async () => {
+    await clearStaleWebCache();
+    createWindow();
+    createTray();
+    const protocolUrl = process.argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
+    handleProtocolUrl(protocolUrl);
+  });
+}
 
 app.on('window-all-closed', () => {});
 app.on('activate', () => {

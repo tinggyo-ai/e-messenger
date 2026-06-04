@@ -1,6 +1,6 @@
 {
   "name": "e-messenger",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "E-Messenger company chat app",
   "main": "main.js",
   "scripts": {
@@ -14,6 +14,14 @@
   "build": {
     "appId": "com.emessenger.app",
     "productName": "E-Messenger",
+    "protocols": [
+      {
+        "name": "E-Messenger",
+        "schemes": [
+          "emessenger"
+        ]
+      }
+    ],
     "directories": {
       "output": "../dist-electron"
     },

@@ -57,11 +57,19 @@ app.use('/api/admin', require('./routes/admin'));
 
 const publicDir = path.join(__dirname, 'public');
 app.get('/download/windows', (req, res) => {
-  const installerPath = path.join(publicDir, 'downloads', 'E-Messenger-Setup-1.0.0.exe');
-  if (!fs.existsSync(installerPath)) {
+  const downloadsDir = path.join(publicDir, 'downloads');
+  const installerNames = [
+    'E-Messenger-Setup-1.0.1.exe',
+    'E-Messenger-Setup-1.0.0.exe',
+  ];
+  const installerPath = installerNames
+    .map(fileName => path.join(downloadsDir, fileName))
+    .find(filePath => fs.existsSync(filePath));
+
+  if (!installerPath) {
     return res.status(404).json({ error: '설치 파일이 없습니다.' });
   }
-  res.download(installerPath, 'E-Messenger Setup 1.0.0.exe');
+  res.download(installerPath, path.basename(installerPath).replaceAll('-', ' '));
 });
 
 app.get('/download/android', (req, res) => {
